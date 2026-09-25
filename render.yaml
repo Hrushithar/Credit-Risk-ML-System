@@ -5,4 +5,9 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     autoDeploy: true
+    envVars:
+      #Render reads this and installs the matching Python version (see .python-version too).
+      - key: PYTHON_VERSION
+        value: 3.14.3

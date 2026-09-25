@@ -3,8 +3,12 @@ from pydantic import BaseModel
 import pandas as pd
 import joblib
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+#Load the artifacts relative to this file, so the app works no matter the CWD.
+BASE_DIR = Path(__file__).resolve().parent
 
 ml_model = {} #{"model":"credit_risk_model.pkl"}
 
@@ -12,14 +16,27 @@ ml_model = {} #{"model":"credit_risk_model.pkl"}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ml_model['model'] = joblib.load('credit_risk_model.pkl')
-    ml_model['threshold'] = joblib.load('best_threshold.pkl')
+    ml_model['model'] = joblib.load(BASE_DIR / 'credit_risk_model.pkl')
+    ml_model['threshold'] = float(joblib.load(BASE_DIR / 'best_threshold.pkl'))
 
     yield
 
     ml_model.clear()
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get('/health')
+def health():
+    #Used by Render's health check to know the service (and model) is ready.
+    return {"status": "ok", "model_loaded": "model" in ml_model}
 
 
 #The only columns that user will see and provide inputs.
@@ -40,9 +57,9 @@ class LoanApplication(BaseModel): #Pydantic Model (Validation)
 
 @app.post('/predict')
 def predict(data : LoanApplication):
-    input_df = pd.DataFrame([data.dict()])
+    input_df = pd.DataFrame([data.model_dump()])
 
-    probability = ml_model['model'].predict_proba(input_df)[:, 1][0]
+    probability = float(ml_model['model'].predict_proba(input_df)[:, 1][0])
 
     prediction = int(probability >= ml_model["threshold"])
 
